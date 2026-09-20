@@ -1,0 +1,15 @@
+---
+import Layout from '~/components/Layout.astro';
+import NextMeetings from '~/islands/NextMeetings.tsx';
+import { DATA_SCRIPT_ID, inlineJson, setCurrentDataset } from '~/lib/current.ts';
+import { loadDataset } from '~/lib/data.ts';
+
+const dataset = await loadDataset();
+setCurrentDataset(dataset);
+Astro.response.headers.set('Cache-Control', 'private, no-cache');
+---
+
+<Layout title="double winners — next meeting" fellowships={dataset.fellowships}>
+  <script type="application/json" id={DATA_SCRIPT_ID} set:html={inlineJson(dataset)} />
+  <NextMeetings client:load initialTz={Astro.locals.tz} serverNow={Date.now()} />
+</Layout>

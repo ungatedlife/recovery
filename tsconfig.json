@@ -1,0 +1,14 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "types": ["node", "@cloudflare/workers-types/2023-07-01", "./worker-configuration.d.ts"],
+    "baseUrl": ".",
+    "paths": { "~/*": ["src/*"], "~db/*": ["db/*"] },
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src/**/*", "db/**/*", "scripts/**/*", "tests/**/*", "worker-configuration.d.ts"],
+  "exclude": ["dist", "node_modules", ".wrangler"]
+}

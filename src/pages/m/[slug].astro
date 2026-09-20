@@ -1,0 +1,47 @@
+---
+import { Card } from '~/components/Card.tsx';
+import Layout from '~/components/Layout.astro';
+import { loadDataset } from '~/lib/data.ts';
+import { DAYS, fmtHHMM, nextStart, tzLabel } from '~/lib/time.ts';
+
+const dataset = await loadDataset();
+const m = dataset.meetings.find((x) => x.slug === Astro.params.slug);
+if (!m) return new Response('not found', { status: 404 });
+const fellowship = dataset.fellowships.find((f) => f.code === m.f);
+const now = new Date();
+const tz = Astro.locals.tz;
+const timed = { ...m, ...nextStart(m.day, m.time, m.tz, now) };
+const siblings = m.group ? dataset.meetings.filter((x) => x.group === m.group && x.f === m.f && x.id !== m.id).sort((a, b) => a.day - b.day) : [];
+Astro.response.headers.set('Cache-Control', 'private, no-cache');
+---
+
+<Layout title={`${m.name} — ${fellowship?.name ?? m.f}`} description={`${fellowship?.name ?? m.f} meeting, ${DAYS[m.day]}s at ${fmtHHMM(m.time)} ${tzLabel(m.tz)}.`} index fellowships={dataset.fellowships}>
+  <div class="layout">
+    <div class="side">
+      <h1><a href="/">double winners</a><small>one meeting</small></h1>
+      <div class="clock">{fellowship?.name ?? m.f}</div>
+      <div class="foot">
+        Listed by the fellowship at <a href={fellowship?.website ?? '#'} rel="noopener noreferrer">{fellowship?.website?.replace(/^https?:\/\//, '')}</a>.
+        Times on this page are shown in {tzLabel(tz)}. <a href="/">Back to the list</a>.
+      </div>
+    </div>
+    <div class="main prose">
+      <div class="sect"><b>{DAYS[m.day]}s at {fmtHHMM(m.time)}</b> — {m.tz.replace(/_/g, ' ')}{m.tzc === 'legacy-az' ? ', not yet re-verified' : ''}</div>
+      <Card m={timed} now={now} tz={tz} />
+      {siblings.length > 0 && (
+        <p>
+          Also meets {siblings.map((s, i) => (
+            <>
+              {i > 0 && ', '}
+              <a href={`/m/${s.slug}`}>{DAYS[s.day]} {fmtHHMM(s.time)}</a>
+            </>
+          ))}.
+        </p>
+      )}
+      <p>
+        Meeting details come from the fellowship's own directory and can drift. If a link is dead or a time is wrong, the fellowship's
+        listing is the source of truth{m.listing && (<>: <a href={m.listing} rel="noopener noreferrer">{m.listing}</a></>)}.
+      </p>
+    </div>
+  </div>
+</Layout>
