@@ -1,18 +1,25 @@
 /**
- * The app. Server-rendered with defaults, hydrated with the viewer's prefs, and
- * re-sorted every 30 seconds. One island so the sidebar and the list share state.
+ * The app. Server-rendered with the viewer's real prefs (from the session) so
+ * there is no flash, hydrated once, re-sorted every 30 seconds. One island so
+ * the sidebar and the list share state. Before a session exists, state lives in
+ * localStorage and is migrated to the server on the first server-acknowledged write.
  */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Card, type Timed } from '~/components/Card.tsx';
+import { readDataset } from '~/lib/current.ts';
 import { browserTimeZone, loadIdSet, loadPrefs, saveIdSet, savePrefs } from '~/lib/prefs.ts';
 import { passesFilters, score } from '~/lib/score.ts';
-import { DAYS, fmtHM, isValidTimeZone, minutesBetween, nextStart, tzLabel, zonedParts } from '~/lib/time.ts';
-import { readDataset } from '~/lib/current.ts';
+import { createScheduler, DAYS, fmtHM, isValidTimeZone, tzLabel, zonedParts } from '~/lib/time.ts';
 import { DEFAULT_PREFS, TUNABLE_TYPES, TYPE_LABELS, type Dataset, type Prefs } from '~/lib/types.ts';
 
 interface Props {
   initialTz: string;
   serverNow: number;
+  mode?: 'all' | 'saved';
+  hasSession: boolean;
+  prefs: Prefs | null;
+  saved: string[];
+  hidden: string[];
 }
 
 interface Scored extends Timed {
@@ -21,37 +28,74 @@ interface Scored extends Timed {
 
 const EMPTY = new Set<string>();
 
-export default function NextMeetings({ initialTz, serverNow }: Props) {
+async function api(path: string, body: unknown): Promise<boolean> {
+  try {
+    const r = await fetch(path, { method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+function clearLocal() {
+  try {
+    localStorage.removeItem('dw.prefs.v1');
+    localStorage.removeItem('dw.saved.v1');
+    localStorage.removeItem('dw.hidden.v1');
+  } catch {
+    /* ignore */
+  }
+}
+
+export default function NextMeetings(props: Props) {
+  const { initialTz, serverNow, mode = 'all' } = props;
   const [ds, setDs] = useState<Dataset>(readDataset);
   const [now, setNow] = useState(() => new Date(serverNow));
-  const [prefs, setPrefsState] = useState<Prefs>(DEFAULT_PREFS);
-  const [hasPrefs, setHasPrefs] = useState(false);
-  const [saved, setSaved] = useState<Set<string>>(EMPTY);
-  const [hidden, setHidden] = useState<Set<string>>(EMPTY);
+  const [prefs, setPrefsState] = useState<Prefs>(props.prefs ?? DEFAULT_PREFS);
+  const [hasPrefs, setHasPrefs] = useState(props.prefs !== null);
+  const [saved, setSaved] = useState<Set<string>>(() => new Set(props.saved));
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set(props.hidden));
   const [showHidden, setShowHidden] = useState(false);
-  const [shown, setShown] = useState(DEFAULT_PREFS.pageSize);
-  const [tz, setTz] = useState(initialTz);
+  const [shown, setShown] = useState((props.prefs ?? DEFAULT_PREFS).pageSize);
+  const [tz, setTz] = useState(props.prefs?.timezone && isValidTimeZone(props.prefs.timezone) ? props.prefs.timezone : initialTz);
   const [pickTz, setPickTz] = useState(false);
   const dsRef = useRef(ds);
   dsRef.current = ds;
-  const startCache = useRef(new Map<string, Date>());
+  const synced = useRef(props.hasSession);
+  const putTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const p = loadPrefs();
-    if (p) {
-      setPrefsState(p);
-      setHasPrefs(true);
-      if (p.timezone && isValidTimeZone(p.timezone)) setTz(p.timezone);
-      else {
-        const b = browserTimeZone();
-        if (b) setTz(b);
+    const params = new URLSearchParams(location.search);
+    if (params.get('deleted') === '1') {
+      clearLocal();
+      history.replaceState(null, '', location.pathname);
+    }
+    if (!props.hasSession) {
+      const local = loadPrefs();
+      const ls = loadIdSet('saved');
+      const lh = loadIdSet('hidden');
+      if (local || ls.size || lh.size) {
+        const p = local ?? DEFAULT_PREFS;
+        setPrefsState(p);
+        setHasPrefs(Boolean(local));
+        setSaved(ls);
+        setHidden(lh);
+        if (p.timezone && isValidTimeZone(p.timezone)) setTz(p.timezone);
+        (async () => {
+          let ok = await api('/api/prefs', p);
+          for (const id of ls) ok = (await api('/api/saved', { id, kind: 'saved', on: true })) && ok;
+          for (const id of lh) ok = (await api('/api/saved', { id, kind: 'hidden', on: true })) && ok;
+          if (ok) {
+            synced.current = true;
+            clearLocal();
+          }
+        })();
       }
-    } else {
+    }
+    if (!props.prefs?.timezone) {
       const b = browserTimeZone();
       if (b) setTz(b);
     }
-    setSaved(loadIdSet('saved'));
-    setHidden(loadIdSet('hidden'));
     const tick = () => setNow(new Date());
     tick();
     const iv = setInterval(tick, 30_000);
@@ -80,7 +124,15 @@ export default function NextMeetings({ initialTz, serverNow }: Props) {
     setPrefsState(next);
     setHasPrefs(true);
     setShown(next.pageSize);
-    savePrefs(next);
+    if (!synced.current) savePrefs(next);
+    if (putTimer.current) clearTimeout(putTimer.current);
+    putTimer.current = setTimeout(async () => {
+      const ok = await api('/api/prefs', next);
+      if (ok) {
+        if (!synced.current) clearLocal();
+        synced.current = true;
+      } else savePrefs(next);
+    }, 400);
   };
   const toggleFellowship = (code: string | null) => {
     if (code === null) return setPrefs({ ...prefs, fellowships: [] });
@@ -106,29 +158,32 @@ export default function NextMeetings({ initialTz, serverNow }: Props) {
   const toggleId = (kind: 'saved' | 'hidden', id: string) => {
     const cur = kind === 'saved' ? saved : hidden;
     const next = new Set(cur);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
+    const on = !next.has(id);
+    if (on) next.add(id);
+    else next.delete(id);
     (kind === 'saved' ? setSaved : setHidden)(next);
-    saveIdSet(kind, next);
+    if (!synced.current) saveIdSet(kind, next);
+    api('/api/saved', { id, kind, on }).then((ok) => {
+      if (ok) {
+        if (!synced.current) clearLocal();
+        synced.current = true;
+      } else saveIdSet(kind, next);
+    });
   };
 
   const list = useMemo(() => {
     const out: Scored[] = [];
-    const grace = prefs.joinGraceMin;
+    const sched = createScheduler(now, prefs.joinGraceMin);
     const hiddenSet = showHidden ? EMPTY : hidden;
     for (const m of ds.meetings) {
+      if (mode === 'saved' && !saved.has(m.id)) continue;
       if (!passesFilters(m, prefs, hiddenSet)) continue;
-      const key = `${m.id}|${m.day}|${m.time}|${m.tz}|${grace}`;
-      let start = startCache.current.get(key);
-      if (!start || minutesBetween(now, start) < -grace) {
-        start = nextStart(m.day, m.time, m.tz, now, grace).start;
-        startCache.current.set(key, start);
-      }
-      out.push({ ...m, start, delta: minutesBetween(now, start), sc: score(m, prefs, saved) });
+      const { start, delta } = sched.next(m.day, m.time, m.tz);
+      out.push({ ...m, start, delta, sc: score(m, prefs, saved) });
     }
     out.sort((a, b) => a.delta - b.delta || b.sc - a.sc || a.name.localeCompare(b.name));
     return out;
-  }, [ds, prefs, hidden, saved, now, showHidden]);
+  }, [ds, prefs, hidden, saved, now, showHidden, mode]);
 
   const live = list.filter((x) => x.delta <= 0);
   const future = list.filter((x) => x.delta > 0);
@@ -143,25 +198,21 @@ export default function NextMeetings({ initialTz, serverNow }: Props) {
     }
   }, [tz]);
 
-  const fellowshipChips = (extraClass = '') =>
+  const fellowshipChips = () =>
     ds.fellowships.map((f) => (
-      <button
-        type="button"
-        class={`f-${f.code} ${extraClass}${prefs.fellowships.includes(f.code) ? ' on' : ''}`}
-        data-c="1"
-        title={f.name}
-        onClick={() => toggleFellowship(f.code)}
-      >
+      <button type="button" class={`f-${f.code}${prefs.fellowships.includes(f.code) ? ' on' : ''}`} data-c="1" title={f.name} onClick={() => toggleFellowship(f.code)}>
         {f.code}
       </button>
     ));
+
+  const cardProps = (x: Scored, feat = false) => ({ m: x, now, tz, feat, saved: saved.has(x.id), onSave: (id: string) => toggleId('saved', id), onHide: (id: string) => toggleId('hidden', id) });
 
   return (
     <div class="layout">
       <div class="side">
         <h1>
           <a href="/">double winners</a>
-          <small>next meeting</small>
+          <small>{mode === 'saved' ? 'saved meetings' : 'next meeting'}</small>
         </h1>
         <div class="clock">
           {DAYS[np.dow]}, {fmtHM(np.h, np.mi)} in {tzLabel(tz)}{' '}
@@ -178,6 +229,13 @@ export default function NextMeetings({ initialTz, serverNow }: Props) {
             </label>
           )}
         </div>
+        <nav class="navline">
+          {mode === 'saved' ? <a href="/">all meetings</a> : <a href="/saved">saved{saved.size ? ` (${saved.size})` : ''}</a>}
+          {' · '}
+          <a href="/account">account</a>
+          {' · '}
+          <a href="/about">about</a>
+        </nav>
         <div class="filters">
           <button type="button" class={prefs.fellowships.length ? '' : 'on'} onClick={() => toggleFellowship(null)}>
             all
@@ -187,12 +245,7 @@ export default function NextMeetings({ initialTz, serverNow }: Props) {
           {TUNABLE_TYPES.map((code) => {
             const v = prefs.types[code] ?? 0;
             return (
-              <button
-                type="button"
-                class={`util${v === 1 ? ' on' : ''}${v === -1 ? ' mute' : ''}`}
-                title={v === 0 ? 'click to boost' : v === 1 ? 'click to mute' : 'click to reset'}
-                onClick={() => cycleType(code)}
-              >
+              <button type="button" class={`util${v === 1 ? ' on' : ''}${v === -1 ? ' mute' : ''}`} title={v === 0 ? 'click to boost' : v === 1 ? 'click to mute' : 'click to reset'} onClick={() => cycleType(code)}>
                 {TYPE_LABELS[code]}
               </button>
             );
@@ -213,16 +266,19 @@ export default function NextMeetings({ initialTz, serverNow }: Props) {
         <div class="foot">
           For people in more than one program. Times are shown in your zone; each meeting keeps its own. Meetings more than ten minutes
           underway wait for next week; the point is to arrive near the beginning. Cards marked <i>details</i> open the fellowship's own page
-          holding the link. A <i>~</i> means the time hasn't been re-verified since import. Nothing you do here is recorded anywhere but this
-          browser. <a href="/about">About &amp; sources</a>.
+          holding the link. A <i>~</i> means the time hasn't been re-verified since import. Your choices are kept under an anonymous id
+          with no name, email or address attached. <a href="/about">About &amp; sources</a>.
         </div>
       </div>
       <div class="main">
-        {!hasPrefs && (
+        {mode === 'all' && !hasPrefs && (
           <div class="hello">
             Which fellowships are you in? Pick any; the rest stay a click away.
             <div class="chips">{fellowshipChips()}</div>
           </div>
+        )}
+        {mode === 'saved' && list.length === 0 && (
+          <div class="empty">nothing saved yet. tap ☆ on any card and it will wait for you here.</div>
         )}
         {live.length > 0 && (
           <>
@@ -231,23 +287,25 @@ export default function NextMeetings({ initialTz, serverNow }: Props) {
             </div>
             <div class="grid">
               {live.map((x) => (
-                <Card key={x.id} m={x} now={now} tz={tz} saved={saved.has(x.id)} onSave={(id) => toggleId('saved', id)} onHide={(id) => toggleId('hidden', id)} />
+                <Card key={x.id} {...cardProps(x)} />
               ))}
             </div>
           </>
         )}
-        <div class="sect">
-          <b>up next</b> — arrive at the top of the hour like a gentleman
-        </div>
+        {(mode === 'all' || list.length > 0) && (
+          <div class="sect">
+            <b>up next</b> — arrive at the top of the hour like a gentleman
+          </div>
+        )}
         {next.length ? (
           <div class="grid">
             {next.map((x, i) => (
-              <Card key={x.id} m={x} now={now} tz={tz} feat={i === 0} saved={saved.has(x.id)} onSave={(id) => toggleId('saved', id)} onHide={(id) => toggleId('hidden', id)} />
+              <Card key={x.id} {...cardProps(x, i === 0)} />
             ))}
           </div>
-        ) : (
+        ) : mode === 'all' ? (
           <div class="empty">nothing matches these filters. loosen your grip.</div>
-        )}
+        ) : null}
         {future.length > shown && (
           <button type="button" class="more" onClick={() => setShown(shown + prefs.pageSize)}>
             show more

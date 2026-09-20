@@ -111,3 +111,93 @@ export const linkHealth = sqliteTable('link_health', {
 export type Meeting = typeof meetings.$inferSelect;
 export type NewMeeting = typeof meetings.$inferInsert;
 export type Fellowship = typeof fellowships.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Identity. Minimal by construction: an anonymous user is a row with no email.
+// Sessions store only a token hash and expiry. Nothing here records a join.
+// ---------------------------------------------------------------------------
+
+export const users = sqliteTable('users', {
+  id: text('id').primaryKey(), // 32 random bytes, hex; never sequential
+  email: text('email').unique(), // NULL for anonymous users; the only PII in the system
+  emailVerifiedAt: text('email_verified_at'),
+  createdAt: text('created_at').notNull(),
+  lastActiveDay: text('last_active_day').notNull(), // 'YYYY-MM-DD' only
+});
+
+export const sessions = sqliteTable(
+  'sessions',
+  {
+    id: text('id').primaryKey(), // sha256(token); the raw token lives only in the cookie
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    expiresAt: text('expires_at').notNull(),
+    createdAt: text('created_at').notNull(),
+    // deliberately no ip_address, no user_agent
+  },
+  (t) => [index('sessions_user').on(t.userId)],
+);
+
+export const userPrefs = sqliteTable('user_prefs', {
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  prefsJson: text('prefs_json').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const savedMeetings = sqliteTable(
+  'saved_meetings',
+  {
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    meetingId: text('meeting_id').notNull().references(() => meetings.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull().default('saved'), // 'saved' | 'hidden'
+    createdAt: text('created_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.meetingId] })],
+);
+
+/** Aggregate counters only. Never per user, never per meeting. */
+export const dailyStats = sqliteTable(
+  'daily_stats',
+  {
+    day: text('day').notNull(),
+    metric: text('metric').notNull(), // 'anon_users_created' | 'saves' | 'deletes' | ...
+    value: integer('value').notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.metric] })],
+);
+
+// ---------------------------------------------------------------------------
+// Scrape bookkeeping.
+// ---------------------------------------------------------------------------
+
+export const scrapeRuns = sqliteTable(
+  'scrape_runs',
+  {
+    id: text('id').primaryKey(),
+    sourceId: text('source_id').notNull().references(() => sources.id),
+    startedAt: text('started_at').notNull(),
+    finishedAt: text('finished_at'),
+    status: text('status').notNull(), // 'ok' | 'partial' | 'failed' | 'needs_review'
+    fetched: integer('fetched'),
+    added: integer('added'),
+    changed: integer('changed'),
+    missing: integer('missing'),
+    error: text('error'),
+    diffJson: text('diff_json'), // compact list of changes for the admin page
+  },
+  (t) => [index('scrape_runs_source_started').on(t.sourceId, t.startedAt)],
+);
+
+export const reviewQueue = sqliteTable('review_queue', {
+  id: text('id').primaryKey(),
+  sourceId: text('source_id'),
+  kind: text('kind').notNull(), // 'llm' | 'submission' | 'conflict' | 'broken-link'
+  proposedJson: text('proposed_json').notNull(),
+  meetingId: text('meeting_id'),
+  createdAt: text('created_at').notNull(),
+  resolvedAt: text('resolved_at'),
+  resolution: text('resolution'), // 'accepted' | 'rejected' | 'merged'
+});
+
+export type User = typeof users.$inferSelect;
+export type Source = typeof sources.$inferSelect;
+export type ScrapeRun = typeof scrapeRuns.$inferSelect;

@@ -10,20 +10,23 @@ This repo grew out of a single-file personal tracker (kept in `legacy/index.html
 
 | Phase | What | State |
 |---|---|---|
-| 0 | Astro + Worker scaffold, D1 schema, legacy import, feature parity, self-hosted fonts | **done (this branch)** |
-| 1 | Anonymous sessions in D1, prefs + saved/hidden synced, `/about`, retention | next |
-| 2 | Scrapers (TSML feed, Teamup, DA HTML), cron, link health, admin behind Cloudflare Access | |
-| 3 | Optional email-code sign-in for cross-device sync, more fellowships, submit-a-meeting | |
+| 0 | Astro + Worker scaffold, D1 schema, legacy import, feature parity, self-hosted fonts | done |
+| 1 | Anonymous sessions in D1, prefs + saved/hidden synced, `/saved`, `/account`, retention | done |
+| 2 | Scraper pipeline (TSML feed + Teamup adapters), cron, link health, admin behind Cloudflare Access | done, pending first real run |
+| 2b | DA/BDA HTML adapter, SLAA Teamup key, more fellowships | next |
+| 3 | Optional email-code sign-in for cross-device sync, submit-a-meeting | |
 
-In Phase 0 preferences, saved and hidden meetings live in the browser's `localStorage` only.
+Until a visitor taps a fellowship or saves a meeting, nothing is stored server-side. That first tap creates an anonymous user (random id, no email) and sets an `HttpOnly` cookie; anything already in `localStorage` from before migrates up and is cleared.
 
 ## Stack
 
 - **Astro 7** (`output: 'server'`) on **Cloudflare Workers** via `@astrojs/cloudflare`, one Preact island (`src/islands/NextMeetings.tsx`), ~15 KB gz of client JS.
-- **D1** (SQLite) with **Drizzle** for the meeting catalog. Meetings are weekly *rules* with a local wall time and an IANA timezone, never pre-expanded occurrences. Field names follow the [Meeting Guide / TSML spec](https://github.com/code4recovery/spec) so AA/NA feeds can drop in later.
+- **D1** (SQLite) with **Drizzle** for the meeting catalog and for users/sessions/prefs. Meetings are weekly *rules* with a local wall time and an IANA timezone, never pre-expanded occurrences. Field names follow the [Meeting Guide / TSML spec](https://github.com/code4recovery/spec) so AA/NA feeds can drop in later.
 - **KV** holds the published client dataset (`dataset:current`). A JSON copy is bundled at `src/data/dataset.json` as the fallback so the site works before the first publish and in local dev.
-- No date library. `src/lib/time.ts` does DST-correct next-occurrence math with `Intl` only (tests in `tests/time.test.ts`).
-- No third-party requests at all: fonts are self-hosted (`public/fonts`, OFL-licensed), no analytics, `Referrer-Policy: no-referrer`, join links carry `rel="noopener noreferrer"`.
+- No date library. `src/lib/time.ts` does DST-correct next-occurrence math with `Intl` only, and `createScheduler` does it for the whole dataset with the Intl work done once per zone (parity-tested against the exact routine across DST weeks).
+- Hand-rolled sessions (`src/lib/session.ts`): 32-byte token in the cookie, SHA-256 of it in D1, no IP or user agent stored, expiry extended lazily. JSON API routes are guarded by `Sec-Fetch-Site`/`Origin` (`src/lib/guard.ts`) because Astro's own CSRF check only covers form posts.
+- Scrapers run inside the same Worker as cron jobs (`src/jobs/`), adapters under `src/jobs/sources/`. Curated edits live in `overrides` and are re-applied after every scrape.
+- No third-party requests at all: fonts are self-hosted (`public/fonts`, OFL-licensed), no analytics, `Referrer-Policy: same-origin` plus `rel="noopener noreferrer"` on every outbound link.
 
 ## Layout
 
@@ -39,7 +42,13 @@ src/pages/index.astro      the app shell
 src/pages/m/[slug].astro   one meeting, shareable
 src/pages/about.astro      what this is, anonymity, sources
 src/pages/data/meetings.json.ts   ETagged dataset for the island's background refresh
-src/pages/api/publish.ts   POST, bearer token: rebuild KV dataset from D1
+src/pages/api/prefs.ts     PUT: save prefs (creates the anonymous user on first call)
+src/pages/api/saved.ts     PUT: save/hide a meeting
+src/pages/api/account/delete.ts   POST: delete the user and everything attached
+src/pages/saved.astro      saved meetings (same island, mode=saved)
+src/pages/account.astro    what we hold, delete button
+src/pages/admin/index.astro       owner console (Cloudflare Access + JWT check in middleware)
+src/pages/api/admin/action.ts     buttons on /admin: run source, publish, link health, retention, review
 src/islands/NextMeetings.tsx      the app (sidebar + list, 30 s tick)
 src/components/Card.tsx    one meeting card, shared by island and static page
 src/lib/time.ts            Intl-only timezone math
@@ -47,8 +56,14 @@ src/lib/score.ts           runtime relevance score (replaces the baked-in `s` co
 src/lib/gcal.ts            Google Calendar link with weekly recurrence in the meeting's zone
 src/lib/data.ts            dataset loader (KV, then bundled JSON)
 src/lib/current.ts         server->island dataset handoff without prop serialization
+src/jobs/index.ts          cron dispatcher (expressions must match wrangler.jsonc)
+src/jobs/bootstrap.ts      seeds an empty catalog from the bundled legacy SQL; refreshes reference rows
+src/jobs/scrape.ts         pick due source -> adapter -> diff -> upsert -> overrides -> run log -> publish
+src/jobs/sources/          tsml-feed.ts, teamup.ts (+ manual); fixtures in public/fixtures
+src/jobs/link-health.ts    HEAD/GET checks on the stalest 100 links per tick
+src/jobs/retention.ts      idle anonymous users, expired sessions, old run logs
 src/jobs/publish.ts        D1 -> dataset -> KV
-src/jobs/index.ts          cron dispatcher (Phase 2 fills it in)
+src/lib/session.ts         anonymous users + sessions; src/lib/guard.ts request guards; src/lib/access.ts Access JWT
 ```
 
 ## Local development
@@ -65,21 +80,26 @@ npm run check                  # astro check (typecheck)
 
 `npm run dev` (Astro's dev server on workerd) also works for UI iteration. The bundled dataset is served whenever KV is empty, so nothing needs provisioning to see the site.
 
-Publishing the dataset from D1 to KV (local):
+Local admin: `.dev.vars` contains `ADMIN_DEV_BYPASS=1` (see `.dev.vars.example`), so `http://localhost:8787/admin` works without Access. The **bootstrap** button seeds an empty local catalog from the bundled legacy SQL. To exercise a scraper without touching a real site, add a fixture source:
 
 ```sh
-curl -X POST -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer <PUBLISH_TOKEN>' http://localhost:8787/api/publish
+npx wrangler d1 execute DB --local --command "INSERT OR IGNORE INTO sources (id,fellowship,adapter,url,config_json,cadence_hours,default_tz,enabled) VALUES ('fixture-tsml','UA','tsml-feed','http://127.0.0.1:8787/fixtures/tsml-sample.json','{\"feedUrl\":\"http://127.0.0.1:8787/fixtures/tsml-sample.json\"}',1,'America/Chicago',1)"
+curl "http://127.0.0.1:8787/cdn-cgi/local/scheduled?cron=17+9+*+*+*&format=json"   # runs the daily job
 ```
 
-## First deploy (one-time)
+## Deploying (what is already done, what is left)
 
-1. `npx wrangler login`, then upgrade the account to **Workers Paid** (cron scrapers in Phase 2 need the CPU/subrequest budget; Phase 0 would run on the free plan).
-2. `npx wrangler d1 create doublewinners` and `npx wrangler kv namespace create KV`; paste the ids into `wrangler.jsonc`.
-3. `npx wrangler secret put PUBLISH_TOKEN` (and delete the placeholder from `vars`).
-4. `npm run db:migrate:remote && npm run db:seed:remote`
-5. `npm run deploy`, then `POST /api/publish` once so KV has the dataset.
-6. Point `doublewinners.org` at the Worker (the `routes` block in `wrangler.jsonc` uses custom domains). Connect the repo to Workers Builds so pushes deploy.
+Already provisioned in the Cloudflare account and wired into `wrangler.jsonc`: the D1 database `doublewinners` (both migrations applied, reference rows present) and the KV namespace `doublewinners-data`. The catalog seeds itself on the first cron tick or the first **bootstrap** click in `/admin`.
+
+Left to do in the dashboard, once:
+
+1. **Workers Paid** ($5/mo, account-wide). Cron jobs need its CPU and subrequest budget.
+2. **Workers Builds**: connect this GitHub repo to a new Worker named `doublewinners`, build command `npm run build`, deploy command `npx wrangler deploy`, production branch `main`. Every merge to `main` then deploys. (`wrangler deploy` also applies D1 migrations because `migrations_dir` is set.)
+3. **Domain**: add `doublewinners.org` as a zone on the account, then the `routes` block in `wrangler.jsonc` attaches the Worker to the apex and `www`. Until then the Worker is reachable at its `workers.dev` URL (`workers_dev: true`).
+4. **Cloudflare Access** for `/admin` (Zero Trust, free): add the *One-time PIN* identity provider; create a self-hosted application with destinations `doublewinners.org/admin*` and `doublewinners.org/api/admin/*`; policy *Allow* with *Emails* = your address; copy the app's **AUD tag**. Then set `ACCESS_TEAM_DOMAIN` (`https://<team>.cloudflareaccess.com`) and `ACCESS_AUD` in the Worker's variables (or `wrangler.jsonc` `vars`). While either is empty `/admin` answers 404.
+5. **Secrets** (optional): `npx wrangler secret put TEAMUP_TOKEN` (free key from teamup.com/api-keys/request) before enabling the Teamup sources in `/admin`; `HEALTHCHECK_URL` var for a healthchecks.io ping.
+
+Cron schedule (UTC): `17 9 * * *` scrape the stalest due source (weekly cadence per source), `43 */6 * * *` check 100 links, `5 4 * * 1` retention.
 
 ## Data notes
 
@@ -90,4 +110,4 @@ curl -X POST -H 'Content-Type: application/json' \
 
 ## Anonymity principles
 
-No sign-up. Nothing a visitor does is recorded server-side in Phase 0. When sessions arrive they are anonymous by default (opaque id, no IP, no user agent), upgradable by email code only, deletable in one click. There is no join-tracking redirect and never will be: joining a meeting is a plain link.
+No sign-up. An anonymous user is a random id with no email, no IP, no user agent; the cookie is the only key to it. Prefs and saved/hidden meeting ids are all that hang off it. One click on `/account` deletes the row and everything attached; idle accounts are purged after 180 days. Only aggregate daily counters are kept. There is no join-tracking redirect and never will be: joining a meeting is a plain link that carries no referrer.

@@ -46,3 +46,30 @@ export function browserTimeZone(): string | null {
     return null;
   }
 }
+
+/** Validate untrusted prefs (API body, localStorage) into a well-formed Prefs. Unknown keys dropped. */
+export function sanitizePrefs(input: unknown): Prefs {
+  const p = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const str = (v: unknown, max = 64) => (typeof v === 'string' && v.length <= max ? v : null);
+  const bool = (v: unknown) => v === true;
+  const fellowships = Array.isArray(p.fellowships) ? p.fellowships.filter((c): c is string => typeof c === 'string' && /^[A-Z0-9-]{1,12}$/.test(c)).slice(0, 32) : [];
+  const types: Record<string, -1 | 0 | 1> = {};
+  if (p.types && typeof p.types === 'object') {
+    for (const [k, v] of Object.entries(p.types as Record<string, unknown>).slice(0, 64)) {
+      if (/^[A-Z0-9-]{1,16}$/.test(k) && (v === 1 || v === -1)) types[k] = v;
+    }
+  }
+  const timezone = str(p.timezone) ?? null;
+  const grace = typeof p.joinGraceMin === 'number' && Number.isFinite(p.joinGraceMin) ? Math.min(60, Math.max(0, Math.round(p.joinGraceMin))) : DEFAULT_PREFS.joinGraceMin;
+  const pageSize = typeof p.pageSize === 'number' && Number.isFinite(p.pageSize) ? Math.min(48, Math.max(6, Math.round(p.pageSize))) : DEFAULT_PREFS.pageSize;
+  return {
+    fellowships,
+    types,
+    menOnly: bool(p.menOnly),
+    womenOnly: bool(p.womenOnly) && !bool(p.menOnly),
+    videoOnly: bool(p.videoOnly),
+    timezone: timezone && /^[A-Za-z_]+(\/[A-Za-z_+-]+){0,2}$/.test(timezone) ? timezone : null,
+    joinGraceMin: grace,
+    pageSize,
+  };
+}
