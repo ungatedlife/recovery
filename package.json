@@ -1,0 +1,39 @@
+{
+  "name": "doublewinners",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Double Winners \u2014 the next virtual recovery meeting you can catch, across fellowships.",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "wrangler dev",
+    "check": "astro check",
+    "test": "vitest run",
+    "import:legacy": "node --experimental-strip-types --no-warnings scripts/import-legacy.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "db:seed:local": "wrangler d1 execute DB --local --file db/seed/legacy.sql",
+    "db:seed:remote": "wrangler d1 execute DB --remote --file db/seed/legacy.sql",
+    "deploy": "astro build && wrangler deploy",
+    "types": "wrangler types",
+    "prepare": "wrangler types"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^14.3.2",
+    "@astrojs/preact": "^6.0.5",
+    "astro": "^7.3.3",
+    "drizzle-orm": "^0.45.2",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@cloudflare/workers-types": "^5.20260920.1",
+    "@types/node": "^26.6.2",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.1",
+    "wrangler": "^4.135.0"
+  }
+}

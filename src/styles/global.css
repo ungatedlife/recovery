@@ -1,0 +1,145 @@
+/* Ported from the original single-file tracker. Fonts are self-hosted so no
+   third-party request ever sees a visitor's IP. */
+@font-face {
+  font-family: 'EB Garamond';
+  src: url('/fonts/EBGaramond-Latin.woff2') format('woff2');
+  font-weight: 400 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'EB Garamond';
+  src: url('/fonts/EBGaramond-Italic-Latin.woff2') format('woff2');
+  font-weight: 400 500; font-style: italic; font-display: swap;
+}
+@font-face {
+  font-family: 'iA Writer Duo';
+  src: url('/fonts/iAWriterDuoS-Regular.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'iA Writer Duo';
+  src: url('/fonts/iAWriterDuoS-Bold.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'iA Writer Duo';
+  src: url('/fonts/iAWriterDuoS-Italic.woff2') format('woff2');
+  font-weight: 400; font-style: italic; font-display: swap;
+}
+:root {
+  color-scheme: light dark;
+  --bg:#f7f4ee; --card:#fffdf9; --ink:#22211e; --dim:#8d8779; --line:#e7e0d2;
+  --gold:#a8842d;
+  --duo:'iA Writer Duo', ui-monospace, 'SF Mono', Menlo, monospace;
+  --serif:'EB Garamond', Georgia, 'Times New Roman', serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:#171614; --card:#201e1b; --ink:#eae5da; --dim:#968f80; --line:#33302a;
+    --gold:#cfa955;
+  }
+}
+/* Fellowship accent colors are emitted per fellowship by the SSR shell as
+   .f-CODE { --fc: ... } so new fellowships need no CSS change. */
+
+* { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+html { font-size:15px; }
+body { font-family:var(--duo); background:var(--bg); color:var(--ink); padding:18px 16px 70px; line-height:1.45; }
+a { color:inherit; }
+.layout { max-width:640px; margin:0 auto; }
+h1 { font-weight:700; font-size:1.2rem; letter-spacing:-.01em; }
+h1 a { text-decoration:none; }
+h1 small { font-weight:400; color:var(--dim); font-size:.8em; margin-left:.4em; }
+.clock { font-family:var(--serif); font-style:italic; color:var(--dim); font-size:1.05rem; margin:2px 0 18px; }
+.clock button { font:inherit; color:inherit; background:none; border:none; border-bottom:1px dotted var(--dim); cursor:pointer; padding:0; }
+.filters { display:flex; gap:7px; flex-wrap:wrap; margin-bottom:6px; }
+.filters button, .chips button {
+  font-family:var(--duo); font-size:.8rem; cursor:pointer; border-radius:999px; padding:7px 14px;
+  background:var(--card); color:var(--dim); border:1.5px solid var(--line); transition:all .15s;
+}
+.filters button[data-c], .chips button[data-c] { border-color:color-mix(in srgb, var(--fc) 45%, transparent); color:var(--fc); }
+.filters button.on, .chips button.on { background:var(--fc, var(--ink)); color:var(--bg); border-color:var(--fc, var(--ink)); font-weight:700; }
+.filters button.util.on { background:var(--ink); color:var(--bg); border-color:var(--ink); }
+.filters .group { font-family:var(--serif); font-style:italic; color:var(--dim); font-size:.95rem; margin:10px 0 2px; width:100%; }
+.sect { margin:24px 0 12px; font-family:var(--serif); font-style:italic; font-size:1.1rem; color:var(--dim); }
+.sect b { color:var(--ink); font-weight:500; }
+.grid { display:grid; grid-template-columns:1fr; gap:12px; }
+.card {
+  position:relative; background:var(--card); border:1.5px solid var(--line); border-left:4px solid var(--fc);
+  border-radius:12px; padding:14px 16px 15px;
+  box-shadow:0 1px 2px rgba(0,0,0,.03);
+  display:flex; flex-direction:column;
+}
+.card.live { border-color:var(--fc); box-shadow:0 0 0 1px color-mix(in srgb, var(--fc) 35%, transparent), 0 2px 10px color-mix(in srgb, var(--fc) 12%, transparent); }
+.row1 { display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
+.when { font-weight:700; font-size:.92rem; letter-spacing:-.01em; }
+.when.live { color:var(--gold); }
+.when .unv { color:var(--dim); font-weight:400; cursor:help; }
+.fell { font-size:.68rem; font-weight:700; letter-spacing:.09em; color:var(--fc); }
+.mens, .womens { font-size:.68rem; font-weight:700; letter-spacing:.06em; background:var(--ink); color:var(--bg); padding:1px 7px; border-radius:4px; }
+.name { font-weight:700; font-size:1.02rem; margin-top:5px; line-height:1.32; letter-spacing:-.01em; }
+.name a { text-decoration:none; }
+.meta { font-family:var(--serif); font-style:italic; color:var(--dim); font-size:.98rem; margin-top:3px; }
+.acts { margin-top:auto; padding-top:11px; display:flex; gap:8px; flex-wrap:wrap; }
+.acts a { font-family:var(--duo); text-decoration:none; font-size:.82rem; font-weight:700; padding:7px 15px; border-radius:8px; }
+.join { background:var(--fc); color:var(--bg); }
+.detail { border:1.5px solid var(--fc); color:var(--fc); }
+.phonebtn { background:var(--dim); color:var(--bg); }
+.gcal { border:1.5px solid var(--line); color:var(--dim); }
+.empty { font-family:var(--serif); font-style:italic; color:var(--dim); padding:18px 0; }
+.more { font-family:var(--duo); width:100%; margin-top:10px; border:1.5px dashed var(--line); background:none; color:var(--dim); border-radius:10px; padding:12px; font-size:.85rem; cursor:pointer; }
+.foot { font-family:var(--serif); color:var(--dim); font-size:.92rem; margin-top:34px; line-height:1.65; }
+.foot a { color:var(--dim); }
+
+/* first-visit strip: one quiet question, no modal */
+.hello { font-family:var(--serif); font-style:italic; color:var(--dim); font-size:1.05rem; margin:0 0 14px; }
+.hello .chips { display:flex; gap:7px; flex-wrap:wrap; margin-top:8px; font-style:normal; }
+
+/* prose pages (/about, /m/slug) */
+.prose { font-family:var(--serif); font-size:1.15rem; line-height:1.65; max-width:62ch; }
+.prose h2 { font-family:var(--duo); font-size:1rem; margin:28px 0 8px; }
+.prose p { margin:0 0 14px; }
+.prose .card { font-family:var(--duo); font-size:1rem; margin:18px 0; }
+
+/* ---------- big screens: sidebar + card grid + spotlight ---------- */
+@media (min-width: 1000px) {
+  html { font-size:17px; }
+  body { padding:56px 48px 90px; }
+  .layout {
+    max-width:1500px; margin:0 auto;
+    display:grid; grid-template-columns:290px minmax(0,1fr); gap:64px; align-items:start;
+  }
+  .side { position:sticky; top:56px; }
+  h1 { font-size:1.7rem; }
+  h1 small { display:block; margin:2px 0 0; font-size:.55em; }
+  .clock { font-size:1.3rem; margin:8px 0 30px; line-height:1.4; }
+  .filters { flex-direction:column; align-items:stretch; gap:8px; }
+  .filters button { text-align:left; padding:10px 18px; font-size:.85rem; border-radius:10px; }
+  .foot { margin-top:44px; font-size:.88rem; }
+  .sect { font-size:1.35rem; margin:34px 0 16px; }
+  .sect:first-child { margin-top:0; }
+  .grid { grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); gap:16px; }
+  .card { padding:18px 20px 18px; border-radius:14px; }
+  .card:hover { transform:translateY(-2px); transition:transform .18s ease; box-shadow:0 6px 18px rgba(0,0,0,.08), 0 0 0 1px color-mix(in srgb, var(--fc) 25%, transparent); }
+  /* spotlight: the single next catchable meeting */
+  .card.feat { grid-column:1 / -1; padding:30px 34px; border-left-width:6px; }
+  .card.feat .name { font-size:1.9rem; line-height:1.2; margin-top:10px; max-width:26ch; }
+  .card.feat .when { font-size:1.05rem; }
+  .card.feat .meta { font-size:1.15rem; margin-top:8px; }
+  .card.feat .acts { padding-top:20px; }
+  .card.feat .acts a { font-size:.95rem; padding:11px 24px; border-radius:10px; }
+}
+@media (min-width: 1500px) {
+  html { font-size:18px; }
+  .grid { grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); }
+}
+
+/* interactive bits added for the multi-user version */
+.acts button { font-family:var(--duo); font-size:.82rem; font-weight:700; padding:7px 15px; border-radius:8px; border:1.5px solid var(--line); background:none; color:var(--dim); cursor:pointer; }
+.acts button.on { color:var(--gold); border-color:var(--gold); }
+.acts button.hide { border-style:dashed; margin-left:auto; }
+.chips button.mute { text-decoration:line-through; opacity:.6; }
+.tzpick { display:block; margin-top:6px; }
+.tzpick select { font-family:var(--duo); font-size:.85rem; max-width:100%; padding:6px 8px; border-radius:8px; border:1.5px solid var(--line); background:var(--card); color:var(--ink); }
+.hiddenline { font-family:var(--serif); font-style:italic; color:var(--dim); margin-top:18px; }
+.hiddenline button { font:inherit; color:inherit; background:none; border:none; border-bottom:1px dotted var(--dim); cursor:pointer; padding:0; }
+.stale { color:var(--eda, #a84c4c); }

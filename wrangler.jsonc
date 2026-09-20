@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "doublewinners",
+  "main": "./src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "binding": "ASSETS", "directory": "./dist/client" },
+  "observability": { "enabled": true, "logs": { "head_sampling_rate": 0.05 } },
+  "routes": [
+    { "pattern": "doublewinners.org", "custom_domain": true },
+    { "pattern": "www.doublewinners.org", "custom_domain": true }
+  ],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "doublewinners", "database_id": "REPLACE_WITH_D1_ID", "migrations_dir": "db/migrations" }
+  ],
+  "kv_namespaces": [
+    { "binding": "KV", "id": "REPLACE_WITH_KV_ID" }
+  ],
+  // Phase 2 turns these on. Requires Workers Paid for the CPU/subrequest budget.
+  // "triggers": { "crons": ["17 9 * * *", "43 */6 * * *", "5 4 * * 1"] },
+  "vars": {
+    "SITE_NAME": "Double Winners",
+    "PUBLISH_TOKEN": "set-a-real-secret-with-wrangler-secret-put"
+  }
+}

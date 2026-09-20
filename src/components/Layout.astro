@@ -1,0 +1,33 @@
+---
+import '~/styles/global.css';
+import type { FellowshipLite } from '~/lib/types.ts';
+
+interface Props {
+  title: string;
+  description?: string;
+  index?: boolean;
+  fellowships: FellowshipLite[];
+}
+const { title, description = 'The next virtual recovery meeting you can catch, across fellowships.', index = false, fellowships } = Astro.props;
+const fellowshipCss =
+  fellowships.map((f) => `.f-${f.code}{--fc:${f.color}}`).join('') +
+  `@media (prefers-color-scheme:dark){${fellowships.map((f) => `.f-${f.code}{--fc:${f.colorDark}}`).join('')}}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    {!index && <meta name="robots" content="noindex" />}
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="light dark" />
+    <title>{title}</title>
+    <link rel="preload" href="/fonts/iAWriterDuoS-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/EBGaramond-Italic-Latin.woff2" as="font" type="font/woff2" crossorigin />
+    <style set:html={fellowshipCss}></style>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
