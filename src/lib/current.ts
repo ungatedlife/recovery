@@ -25,6 +25,15 @@ export function readDataset(): Dataset {
 }
 
 /** JSON safe to inline in a <script> (no premature close, no HTML comment tricks). */
+let memo: { hash: string; json: string } | null = null;
+
+/** Memoized per dataset hash: the inline payload is identical for every request until a publish. */
+export function inlineDataset(ds: Dataset): string {
+  if (memo?.hash === ds.hash) return memo.json;
+  memo = { hash: ds.hash, json: inlineJson(ds) };
+  return memo.json;
+}
+
 export function inlineJson(value: unknown): string {
   return JSON.stringify(value)
     .replace(/</g, '\\u003c')

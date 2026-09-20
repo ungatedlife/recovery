@@ -6,8 +6,9 @@ import { handle } from '@astrojs/cloudflare/handler';
 import { runScheduled } from './jobs/index.ts';
 
 const SECURITY_HEADERS: Record<string, string> = {
-  // Join links are plain anchors and must never carry our URL to Zoom.
-  'Referrer-Policy': 'no-referrer',
+  // Nothing leaves the site as a referrer; join links also carry rel="noreferrer".
+  // (`no-referrer` would make browsers send `Origin: null` on our own form posts, which the CSRF check rejects.)
+  'Referrer-Policy': 'same-origin',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), interest-cohort=()',

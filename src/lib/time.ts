@@ -159,3 +159,76 @@ export function shiftHHMM(time: string, minutes: number): { time: string; dayCar
   const t = ((total % 1440) + 1440) % 1440;
   return { time: `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`, dayCarry };
 }
+
+// ---------------------------------------------------------------------------
+// Batch scheduler: the same answer as nextStart() for every meeting, but with
+// the Intl work done once per zone instead of once per meeting. A zone gets the
+// fast path only when its UTC offset is the same at the start of today, now, and
+// eight days out, i.e. no DST transition can fall inside the window we compute.
+// Transition weeks (two per zone per year) fall back to the exact routine.
+// ---------------------------------------------------------------------------
+
+export interface Scheduler {
+  next(day: number, time: string, tz: string): NextStart;
+}
+
+interface FastZone {
+  dow: number;
+  /** Date.UTC of today's civil date in this zone, at 00:00 UTC */
+  base: number;
+  offset: number;
+}
+
+export function createScheduler(now: Date, graceMin = 10): Scheduler {
+  const zones = new Map<string, FastZone | null>();
+  const times = new Map<string, number>();
+  const nowMs = now.getTime();
+
+  const zone = (tz: string): FastZone | null => {
+    let z = zones.get(tz);
+    if (z !== undefined) return z;
+    z = null;
+    try {
+      const today = zonedParts(now, tz);
+      const base = Date.UTC(today.y, today.mo - 1, today.d);
+      const offNow = tzOffsetMinutes(now, tz);
+      const offStart = tzOffsetMinutes(new Date(base - offNow * 60000), tz);
+      const offLater = tzOffsetMinutes(new Date(nowMs + 8 * 86400000), tz);
+      if (offNow === offStart && offNow === offLater) z = { dow: today.dow, base, offset: offNow };
+    } catch {
+      z = null;
+    }
+    zones.set(tz, z);
+    return z;
+  };
+
+  const minutesOfDay = (time: string): number => {
+    let m = times.get(time);
+    if (m === undefined) {
+      const { h, mi } = parseHHMM(time);
+      m = h * 60 + mi;
+      times.set(time, m);
+    }
+    return m;
+  };
+
+  return {
+    next(day, time, tz) {
+      const z = zone(tz);
+      if (!z) return nextStart(day, time, tz, now, graceMin);
+      const dd = (day - z.dow + 7) % 7;
+      let startMs = z.base + dd * 86400000 + (minutesOfDay(time) - z.offset) * 60000;
+      let delta = ceilMinutes(startMs - nowMs);
+      if (delta < -graceMin) {
+        startMs += 7 * 86400000;
+        delta = ceilMinutes(startMs - nowMs);
+      }
+      return { start: new Date(startMs), delta };
+    },
+  };
+}
+
+function ceilMinutes(ms: number): number {
+  const v = Math.ceil(ms / 60000);
+  return v === 0 ? 0 : v;
+}

@@ -1,0 +1,117 @@
+---
+/** Owner console. Cloudflare Access in front, JWT re-verified in middleware. */
+import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import Layout from '~/components/Layout.astro';
+import * as schema from '~db/schema.ts';
+import { loadDataset } from '~/lib/data.ts';
+import { getDb } from '~/lib/db.ts';
+
+const db = getDb();
+const dataset = await loadDataset();
+const msg = Astro.url.searchParams.get('msg');
+const [sources, runs, review, links, statusCounts, userCount, stats] = await Promise.all([
+  db.select().from(schema.sources).orderBy(schema.sources.fellowship, schema.sources.id),
+  db.select().from(schema.scrapeRuns).orderBy(desc(schema.scrapeRuns.startedAt)).limit(20),
+  db.select().from(schema.reviewQueue).where(isNull(schema.reviewQueue.resolvedAt)).orderBy(desc(schema.reviewQueue.createdAt)).limit(30),
+  db
+    .select({ id: schema.meetings.id, name: schema.meetings.name, slug: schema.meetings.slug, url: schema.linkHealth.url, verdict: schema.linkHealth.verdict, failures: schema.linkHealth.consecutiveFailures, checkedAt: schema.linkHealth.checkedAt })
+    .from(schema.linkHealth)
+    .innerJoin(schema.meetings, eq(schema.meetings.id, schema.linkHealth.meetingId))
+    .where(and(inArray(schema.linkHealth.verdict, ['dead', 'dead-host']), gte(schema.linkHealth.consecutiveFailures, 2)))
+    .orderBy(desc(schema.linkHealth.consecutiveFailures))
+    .limit(50),
+  db.select({ status: schema.meetings.status, n: sql<number>`count(*)` }).from(schema.meetings).groupBy(schema.meetings.status),
+  db.select({ n: sql<number>`count(*)` }).from(schema.users).get(),
+  db.select().from(schema.dailyStats).where(gte(schema.dailyStats.day, new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10))).orderBy(desc(schema.dailyStats.day)),
+]);
+const short = (s: string | null) => (s ? s.slice(0, 16).replace('T', ' ') : '—');
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<Layout title="double winners — admin" fellowships={dataset.fellowships}>
+  <div class="layout admin">
+    <div class="side">
+      <h1><a href="/">double winners</a><small>admin</small></h1>
+      <div class="clock">signed in as {Astro.locals.admin?.email}</div>
+      <div class="foot">
+        Dataset {dataset.hash} · {dataset.meetings.length} meetings published · generated {short(dataset.generated)}<br />
+        Catalog: {statusCounts.map((s) => `${s.status} ${s.n}`).join(' · ')}<br />
+        Anonymous users: {userCount?.n ?? 0}<br />
+        <form method="post" action="/api/admin/action"><input type="hidden" name="action" value="publish" /><button>publish now</button></form>
+        <form method="post" action="/api/admin/action"><input type="hidden" name="action" value="bootstrap" /><button>bootstrap</button></form>
+        <form method="post" action="/api/admin/action"><input type="hidden" name="action" value="link-health" /><button>check 100 links</button></form>
+        <form method="post" action="/api/admin/action"><input type="hidden" name="action" value="retention" /><button>run retention</button></form>
+      </div>
+    </div>
+    <div class="main">
+      {msg && <div class="msg">{msg}</div>}
+      <div class="sect"><b>sources</b></div>
+      <table>
+        <tr><th>id</th><th>adapter</th><th>cadence</th><th>last run</th><th>last success</th><th></th></tr>
+        {sources.map((s) => (
+          <tr>
+            <td>{s.id}<br /><small>{s.fellowship} · {s.enabled ? 'enabled' : 'disabled'}</small></td>
+            <td>{s.adapter}<br /><small>{s.configJson}</small></td>
+            <td>{s.cadenceHours}h</td>
+            <td>{short(s.lastRunAt)}</td>
+            <td>{short(s.lastSuccessAt)}</td>
+            <td>
+              <form method="post" action="/api/admin/action"><input type="hidden" name="action" value="run" /><input type="hidden" name="source" value={s.id} /><button>run now</button></form>
+              <form method="post" action="/api/admin/action"><input type="hidden" name="action" value="toggle" /><input type="hidden" name="source" value={s.id} /><button>{s.enabled ? 'disable' : 'enable'}</button></form>
+            </td>
+          </tr>
+        ))}
+      </table>
+
+      <div class="sect"><b>recent runs</b></div>
+      <table>
+        <tr><th>started</th><th>source</th><th>status</th><th>fetched</th><th>+</th><th>~</th><th>−</th><th>detail</th></tr>
+        {runs.map((r) => (
+          <tr>
+            <td>{short(r.startedAt)}</td>
+            <td>{r.sourceId}</td>
+            <td class={r.status === 'failed' ? 'bad' : r.status === 'ok' ? 'ok' : ''}>{r.status}</td>
+            <td>{r.fetched ?? ''}</td>
+            <td>{r.added ?? ''}</td>
+            <td>{r.changed ?? ''}</td>
+            <td>{r.missing ?? ''}</td>
+            <td>{r.error && <span class="bad">{r.error}</span>}{r.diffJson && <details><summary>diff</summary><pre>{r.diffJson}</pre></details>}</td>
+          </tr>
+        ))}
+      </table>
+
+      <div class="sect"><b>review queue</b> — {review.length} open</div>
+      <table>
+        {review.map((q) => (
+          <tr>
+            <td>{short(q.createdAt)}<br /><small>{q.sourceId} · {q.kind}</small></td>
+            <td><pre>{q.proposedJson}</pre></td>
+            <td>
+              <form method="post" action="/api/admin/action"><input type="hidden" name="action" value="review" /><input type="hidden" name="id" value={q.id} /><input type="hidden" name="resolution" value="accepted" /><button>acknowledge</button></form>
+              <form method="post" action="/api/admin/action"><input type="hidden" name="action" value="review" /><input type="hidden" name="id" value={q.id} /><input type="hidden" name="resolution" value="rejected" /><button>reject</button></form>
+            </td>
+          </tr>
+        ))}
+      </table>
+
+      <div class="sect"><b>failing links</b> — {links.length}</div>
+      <table>
+        {links.map((l) => (
+          <tr>
+            <td><a href={`/m/${l.slug}`}>{l.name}</a></td>
+            <td class="bad">{l.verdict} ×{l.failures}</td>
+            <td><small>{l.url}</small></td>
+            <td>{short(l.checkedAt)}</td>
+          </tr>
+        ))}
+      </table>
+
+      <div class="sect"><b>last 7 days</b></div>
+      <table>
+        {stats.map((s) => (
+          <tr><td>{s.day}</td><td>{s.metric}</td><td>{s.value}</td></tr>
+        ))}
+      </table>
+    </div>
+  </div>
+</Layout>

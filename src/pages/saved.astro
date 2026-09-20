@@ -10,7 +10,7 @@ const v = Astro.locals.viewer;
 Astro.response.headers.set('Cache-Control', 'private, no-cache');
 ---
 
-<Layout title="double winners — next meeting" fellowships={dataset.fellowships}>
+<Layout title="double winners — saved" fellowships={dataset.fellowships}>
   <script type="application/json" id={DATA_SCRIPT_ID} set:html={inlineDataset(dataset)} />
-  <NextMeetings client:load initialTz={Astro.locals.tz} serverNow={Date.now()} hasSession={v !== null} prefs={v?.prefs ?? null} saved={v?.saved ?? []} hidden={v?.hidden ?? []} />
+  <NextMeetings client:load mode="saved" initialTz={Astro.locals.tz} serverNow={Date.now()} hasSession={v !== null} prefs={v?.prefs ?? null} saved={v?.saved ?? []} hidden={v?.hidden ?? []} />
 </Layout>

@@ -143,3 +143,14 @@ h1 small { font-weight:400; color:var(--dim); font-size:.8em; margin-left:.4em; 
 .hiddenline { font-family:var(--serif); font-style:italic; color:var(--dim); margin-top:18px; }
 .hiddenline button { font:inherit; color:inherit; background:none; border:none; border-bottom:1px dotted var(--dim); cursor:pointer; padding:0; }
 .stale { color:var(--eda, #a84c4c); }
+.navline { font-family:var(--duo); font-size:.8rem; color:var(--dim); margin:-8px 0 14px; }
+.navline a { color:var(--dim); text-decoration:none; border-bottom:1px dotted var(--line); }
+@media (min-width:1000px) { .navline { margin:-18px 0 22px; } }
+/* admin */
+.admin table { border-collapse:collapse; width:100%; font-size:.85rem; margin:8px 0 24px; }
+.admin th, .admin td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+.admin form { display:inline; }
+.admin button { font-family:var(--duo); font-size:.78rem; padding:4px 10px; border-radius:6px; border:1.5px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; margin-right:4px; }
+.admin .bad { color:#a84c4c; } .admin .ok { color:#2f5d50; }
+.admin pre { font-size:.75rem; white-space:pre-wrap; max-height:14em; overflow:auto; background:var(--card); padding:8px; border-radius:6px; }
+.admin .msg { font-family:var(--serif); font-style:italic; color:var(--gold); margin-bottom:12px; }

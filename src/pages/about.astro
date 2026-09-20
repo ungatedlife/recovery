@@ -12,6 +12,7 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=300');
     <div class="side">
       <h1><a href="/">double winners</a><small>about</small></h1>
       <div class="clock">a next-meeting finder for people in more than one program</div>
+      <nav class="navline"><a href="/">all meetings</a> · <a href="/saved">saved</a> · <a href="/account">account</a></nav>
     </div>
     <div class="main prose">
       <h2>what this is</h2>
@@ -21,10 +22,14 @@ Astro.response.headers.set('Cache-Control', 'public, max-age=300');
       </p>
       <h2>anonymity</h2>
       <p>
-        You never sign up. Your fellowships, timezone, saved and hidden meetings live in your own browser and nowhere else. This site
-        sets no analytics cookies, loads nothing from third parties, and tells Zoom nothing about where you came from. Joining a
-        meeting is a plain link; no click is recorded. When optional cross-device sync arrives it will be by email code only, with no
-        name, no password, and a delete-everything button.
+        You never sign up. The first time you tap a fellowship or save a meeting, this site creates a random id and hands your browser a
+        cookie for it. Your fellowships, timezone, saved and hidden meetings hang off that id and nothing else: no name, no email, no IP
+        address, no browser fingerprint. Joining a meeting is a plain link that carries no referrer; no click is ever recorded. There are
+        no analytics cookies and nothing loads from third parties. <a href="/account">Delete everything</a> in one tap, whenever.
+      </p>
+      <p>
+        Plainly: the person running this site can technically read the database. What they would see is a list of random ids, each
+        with a few preferences and a few meeting ids. Accounts that go quiet for six months are purged automatically.
       </p>
       <h2>where the meetings come from</h2>
       <p>

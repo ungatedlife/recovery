@@ -1,0 +1,46 @@
+---
+import Layout from '~/components/Layout.astro';
+import { loadDataset } from '~/lib/data.ts';
+
+const dataset = await loadDataset();
+const v = Astro.locals.viewer;
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<Layout title="double winners — account" fellowships={dataset.fellowships}>
+  <div class="layout">
+    <div class="side">
+      <h1><a href="/">double winners</a><small>account</small></h1>
+      <div class="clock">{v ? 'an anonymous account' : 'no account yet'}</div>
+      <nav class="navline"><a href="/">all meetings</a> · <a href="/saved">saved</a> · <a href="/about">about</a></nav>
+    </div>
+    <div class="main prose">
+      {v ? (
+        <>
+          <h2>what exists</h2>
+          <p>
+            One row with a random id, created {v.user.createdAt.slice(0, 10)}. Attached to it: your fellowship and filter choices,{' '}
+            {v.saved.length} saved and {v.hidden.length} hidden meetings. No name, no email, no address, no record of anything you joined.
+            The cookie in this browser is the only key to it.
+          </p>
+          <h2>on another device</h2>
+          <p>Not yet. Cross-device sync by email code is coming; it will still be optional and still be anonymous to everyone but you.</p>
+          <h2>delete everything</h2>
+          <p>One click removes the row and everything attached to it. There is no undo and nothing to recover.</p>
+          <form method="post" action="/api/account/delete">
+            <button type="submit" class="more">delete everything</button>
+          </form>
+        </>
+      ) : (
+        <>
+          <h2>nothing to see</h2>
+          <p>
+            No account exists until you tap a fellowship or save a meeting. When you do, an anonymous id is created so your choices
+            survive a reload. That is the whole signup.
+          </p>
+          <p><a href="/">Back to the list</a>.</p>
+        </>
+      )}
+    </div>
+  </div>
+</Layout>
