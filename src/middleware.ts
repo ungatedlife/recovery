@@ -22,7 +22,10 @@ export const onRequest = defineMiddleware(async (ctx, next) => {
   // Admin: Cloudflare Access in front, verified again here so nothing bypasses it.
   if (path === '/admin' || path.startsWith('/admin/') || path.startsWith('/api/admin/')) {
     const e = env as Env;
-    if (e.ADMIN_DEV_BYPASS === '1') {
+    // The dev bypass only works on a loopback host, so a stray env var in production
+    // cannot open the console.
+    const local = ctx.url.hostname === 'localhost' || ctx.url.hostname === '127.0.0.1' || ctx.url.hostname === '[::1]';
+    if (e.ADMIN_DEV_BYPASS === '1' && local) {
       ctx.locals.admin = { email: 'dev@localhost', sub: 'dev' };
     } else if (!e.ACCESS_TEAM_DOMAIN || !e.ACCESS_AUD) {
       return new Response('not found', { status: 404 });

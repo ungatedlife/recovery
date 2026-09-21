@@ -7,10 +7,13 @@
   "workers_dev": true,
   "assets": { "binding": "ASSETS", "directory": "./dist/client" },
   "observability": { "enabled": true, "logs": { "head_sampling_rate": 0.05 } },
-  "routes": [
-    { "pattern": "doublewinners.org", "custom_domain": true },
-    { "pattern": "www.doublewinners.org", "custom_domain": true }
-  ],
+  // Uncomment once doublewinners.org is a zone on this Cloudflare account.
+  // Deploying with these while the account does not hold the zone fails the deploy,
+  // so the Worker ships on its workers.dev URL until the domain is added.
+  // "routes": [
+  //   { "pattern": "doublewinners.org", "custom_domain": true },
+  //   { "pattern": "www.doublewinners.org", "custom_domain": true }
+  // ],
   "d1_databases": [
     { "binding": "DB", "database_name": "doublewinners", "database_id": "00566ac6-7bac-4fee-9400-1f5d5d4d3d1a", "migrations_dir": "db/migrations" }
   ],
@@ -21,7 +24,10 @@
   "triggers": { "crons": ["17 9 * * *", "43 */6 * * *", "5 4 * * 1"] },
   "vars": {
     "SITE_NAME": "Double Winners",
-    // Cloudflare Access protects /admin. Set both or /admin answers 404. See README.
+    // Cloudflare Access protects /admin. Both must be set here or /admin answers 404.
+    // Set them in this file, not the dashboard: `wrangler deploy` overwrites dashboard vars.
+    // ACCESS_TEAM_DOMAIN is like "https://yourname.cloudflareaccess.com" (no trailing slash).
+    // ACCESS_AUD is the Application Audience tag from the Access application. See README.
     "ACCESS_TEAM_DOMAIN": "",
     "ACCESS_AUD": "",
     // Optional: healthchecks.io ping URL, POSTed after each successful scrape.

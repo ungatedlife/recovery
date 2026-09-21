@@ -87,19 +87,79 @@ npx wrangler d1 execute DB --local --command "INSERT OR IGNORE INTO sources (id,
 curl "http://127.0.0.1:8787/cdn-cgi/local/scheduled?cron=17+9+*+*+*&format=json"   # runs the daily job
 ```
 
-## Deploying (what is already done, what is left)
+## Going live
 
-Already provisioned in the Cloudflare account and wired into `wrangler.jsonc`: the D1 database `doublewinners` (both migrations applied, reference rows present) and the KV namespace `doublewinners-data`. The catalog seeds itself on the first cron tick or the first **bootstrap** click in `/admin`.
+Plain-language walkthrough. Everything here happens in the Cloudflare dashboard at [dash.cloudflare.com](https://dash.cloudflare.com); no terminal needed.
 
-Left to do in the dashboard, once:
+**Already done.** The database (`doublewinners`) and the storage namespace (`doublewinners-data`) exist on the account, hold the meeting data, and their ids are already in `wrangler.jsonc`. The Workers Paid plan is active.
 
-1. **Workers Paid** ($5/mo, account-wide). Cron jobs need its CPU and subrequest budget.
-2. **Workers Builds**: connect this GitHub repo to a new Worker named `doublewinners`, build command `npm run build`, deploy command `npx wrangler deploy`, production branch `main`. Every merge to `main` then deploys. (`wrangler deploy` also applies D1 migrations because `migrations_dir` is set.)
-3. **Domain**: add `doublewinners.org` as a zone on the account, then the `routes` block in `wrangler.jsonc` attaches the Worker to the apex and `www`. Until then the Worker is reachable at its `workers.dev` URL (`workers_dev: true`).
-4. **Cloudflare Access** for `/admin` (Zero Trust, free): add the *One-time PIN* identity provider; create a self-hosted application with destinations `doublewinners.org/admin*` and `doublewinners.org/api/admin/*`; policy *Allow* with *Emails* = your address; copy the app's **AUD tag**. Then set `ACCESS_TEAM_DOMAIN` (`https://<team>.cloudflareaccess.com`) and `ACCESS_AUD` in the Worker's variables (or `wrangler.jsonc` `vars`). While either is empty `/admin` answers 404.
-5. **Secrets** (optional): `npx wrangler secret put TEAMUP_TOKEN` (free key from teamup.com/api-keys/request) before enabling the Teamup sources in `/admin`; `HEALTHCHECK_URL` var for a healthchecks.io ping.
+### 1. Put the site online
 
-Cron schedule (UTC): `17 9 * * *` scrape the stalest due source (weekly cadence per source), `43 */6 * * *` check 100 links, `5 4 * * 1` retention.
+In the dashboard, open **Compute (Workers)** in the left sidebar, then **Create**. Choose **Import a repository** and connect GitHub if it asks. Pick `ungatedlife/recovery`.
+
+When it asks how to build:
+
+| Field | Value |
+|---|---|
+| Worker name | `doublewinners` |
+| Production branch | `main` |
+| Build command | `npm run build` |
+| Deploy command | `npx wrangler deploy` |
+
+Click deploy and wait a minute or two. You get a temporary address like `doublewinners.<something>.workers.dev`. Open it: the site should be there, with meetings listed.
+
+From now on, anything merged to `main` deploys itself. No further action.
+
+### 2. Point the real domain at it
+
+The domain has to live on the same Cloudflare account before it can be attached.
+
+1. Left sidebar → **Account Home** → **Add a domain**. Type `doublewinners.org`, pick the **Free** plan.
+2. Cloudflare shows you two nameservers and asks you to set them at whoever you bought the domain from. Log in there, find "nameservers" or "DNS", replace what's listed with Cloudflare's two. Save.
+3. Wait. Usually minutes, sometimes a few hours. Cloudflare emails you when the domain is active.
+4. Once it is active, uncomment the `routes` block in `wrangler.jsonc` and push. The next deploy attaches the site to `doublewinners.org` and `www.doublewinners.org` automatically.
+
+Until step 4 the site keeps working on its `workers.dev` address, so nothing is broken while you wait.
+
+### 3. Lock the admin page
+
+`/admin` is where you watch the meeting scrapers and fix data. It answers **404 to everyone**, including you, until this is set up. That is deliberate: an unprotected admin page is worse than no admin page.
+
+Cloudflare Access handles the login, free, no password. You type your email, it mails you a six-digit code, you are in.
+
+1. Left sidebar → **Zero Trust**. First visit asks you to pick a team name; choose anything (say `ungated`). That makes your team address `https://ungated.cloudflareaccess.com`. **Write it down.**
+2. Inside Zero Trust → **Settings** → **Authentication** → **Login methods** → **Add new** → **One-time PIN**. Save.
+3. → **Access** → **Applications** → **Add an application** → **Self-hosted**.
+   - Name: `Double Winners admin`
+   - Add two public hostnames (or "destinations"), one per row:
+     - `doublewinners.org` with path `admin*`
+     - `doublewinners.org` with path `api/admin/*`
+   - If the domain is not live yet, use your `workers.dev` hostname instead and change it later.
+4. On the policy step: name it `me`, action **Allow**, and add one include rule of type **Emails** with your own email address. Save.
+5. Open the finished application and find **Application Audience (AUD) Tag**, a long string of letters and numbers. Copy it.
+6. Put both values into `wrangler.jsonc` under `vars`:
+   ```jsonc
+   "ACCESS_TEAM_DOMAIN": "https://ungated.cloudflareaccess.com",
+   "ACCESS_AUD": "the-long-string-you-copied"
+   ```
+   Commit and push. After the deploy, `/admin` asks for your email code and then lets you in.
+
+Put these in `wrangler.jsonc` rather than typing them into the dashboard's variables screen, because each deploy overwrites dashboard variables with whatever the file says.
+
+### 4. Optional extras
+
+- **Teamup key**, needed before the SLAA and ACA meeting sources can be switched on: request a free key at [teamup.com/api-keys/request](https://teamup.com/api-keys/request), then in the Worker's **Settings → Variables and Secrets** add a **Secret** named `TEAMUP_TOKEN`. Secrets are not overwritten by deploys.
+- **Dead-man switch**: make a free check at [healthchecks.io](https://healthchecks.io), put its ping URL in the `HEALTHCHECK_URL` var, and you get an email if the scrapers ever stop running.
+
+### What runs on its own
+
+All times UTC. The daily job seeds the database on its first run if it is empty, so no manual import is ever needed.
+
+| When | What |
+|---|---|
+| 09:17 daily | Scrape whichever meeting source is most overdue (each source is due weekly) |
+| every 6 hours | Check 100 meeting links for rot |
+| 04:05 Mondays | Delete idle anonymous accounts, expired sessions and old logs |
 
 ## Data notes
 
