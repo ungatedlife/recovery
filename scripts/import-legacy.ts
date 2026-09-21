@@ -287,7 +287,13 @@ function main() {
       if (confidence === 'inferred' && HAND_FIXES.some((f) => f.re.test(`${row.n} ${row.nt}`)))
         overrides.push({ meetingId: id, field: 'timezone', value: JSON.stringify(tz), reason: 'timezone hint in name' });
 
-      const sourceKey = url.daMid ? `mid:${url.daMid}` : url.zoomId ? `zoom:${url.zoomId}:${day}` : `slug:${slug}`;
+      // meeting_sources is keyed (source_id, source_key), one row per meeting, so the
+      // key has to be unique per meeting. Upstream identifiers are not: one DA detail
+      // page covers every weekday of a daily meeting, and a single Zoom room hosts many
+      // different meetings (one room here holds two at the same weekday and time). The
+      // slug is the only per-meeting identity, and the upstream URL is kept in raw_json
+      // for correlating against a real scraper later.
+      const sourceKey = `slug:${slug}`;
       provenance.push({ meetingId: id, sourceId: `${row.f.toLowerCase()}-legacy`, sourceKey, rawHash: sha(JSON.stringify(row)), rawJson: JSON.stringify(row) });
 
       if (url.mangledPasscode && url.conferenceUrl) {

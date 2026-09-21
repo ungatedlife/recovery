@@ -32,7 +32,7 @@ interface Config extends Record<string, unknown> {
 export function normalizeTeamup(events: TeamupEvent[], defaultTz: string | null, listingUrl: string | null): { meetings: NormalizedMeeting[]; review: ReviewItem[] } {
   const meetings: NormalizedMeeting[] = [];
   const review: ReviewItem[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, string>();
   for (const ev of events) {
     if (ev.all_day) continue;
     const seriesKey = ev.series_id ?? ev.id.split('-rid-')[0];
@@ -60,8 +60,15 @@ export function normalizeTeamup(events: TeamupEvent[], defaultTz: string | null,
     }
     const p = zonedParts(start, tz);
     const key = `teamup:${seriesKey}:${p.dow}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const time = `${String(p.h).padStart(2, '0')}:${String(p.mi).padStart(2, '0')}`;
+    const prior = seen.get(key);
+    if (prior !== undefined) {
+      // Same series, same weekday, different start: the key cannot hold both, and
+      // silently keeping the first would hide a real meeting. Surface it instead.
+      if (prior !== time) review.push({ reason: `two starts for one series on the same weekday (${prior} and ${time})`, raw: ev });
+      continue;
+    }
+    seen.set(key, time);
     const title = (ev.title ?? '').trim();
     if (!title) {
       review.push({ reason: 'missing title', raw: ev });
@@ -83,7 +90,7 @@ export function normalizeTeamup(events: TeamupEvent[], defaultTz: string | null,
       sourceKey: key,
       name: title,
       day: p.dow,
-      time: `${String(p.h).padStart(2, '0')}:${String(p.mi).padStart(2, '0')}`,
+      time,
       endTime,
       timezone: tz,
       types: [],

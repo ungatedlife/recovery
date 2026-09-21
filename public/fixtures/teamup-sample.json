@@ -1,10 +1,69 @@
 {
   "events": [
-    {"id": "1001-rid-1790000000", "series_id": 1001, "title": "Sunday Serenity", "notes": "Join Zoom: https://us02web.zoom.us/j/222333444?pwd=QwErTy99\nPasscode: serenity", "start_dt": "2026-09-27T09:30:00-07:00", "end_dt": "2026-09-27T10:30:00-07:00", "all_day": false, "rrule": "FREQ=WEEKLY;BYDAY=SU", "tz": "America/Los_Angeles"},
-    {"id": "1002-rid-1790010000", "series_id": 1002, "title": "Daily Noon Check-in", "notes": "https://zoom.us/j/777888999", "start_dt": "2026-09-21T12:00:00-04:00", "end_dt": "2026-09-21T13:00:00-04:00", "all_day": false, "rrule": "FREQ=DAILY", "tz": "America/New_York"},
-    {"id": "1002-rid-1790096400", "series_id": 1002, "title": "Daily Noon Check-in", "notes": "https://zoom.us/j/777888999", "start_dt": "2026-09-22T12:00:00-04:00", "end_dt": "2026-09-22T13:00:00-04:00", "all_day": false, "rrule": "FREQ=DAILY", "tz": "America/New_York"},
-    {"id": "1003", "series_id": null, "title": "Business Meeting (monthly)", "notes": "https://zoom.us/j/111", "start_dt": "2026-09-25T18:00:00-04:00", "all_day": false, "rrule": "FREQ=MONTHLY;BYDAY=4FR", "tz": "America/New_York"},
-    {"id": "1004", "series_id": null, "title": "No link here", "notes": "Ask a member for the link.", "start_dt": "2026-09-23T20:00:00+10:00", "all_day": false, "rrule": "FREQ=WEEKLY;BYDAY=WE", "tz": "Australia/Sydney"}
+    {
+      "id": "1001-rid-1790000000",
+      "series_id": 1001,
+      "title": "Sunday Serenity",
+      "notes": "Join Zoom: https://us02web.zoom.us/j/222333444?pwd=QwErTy99\nPasscode: serenity",
+      "start_dt": "2026-09-27T09:30:00-07:00",
+      "end_dt": "2026-09-27T10:30:00-07:00",
+      "all_day": false,
+      "rrule": "FREQ=WEEKLY;BYDAY=SU",
+      "tz": "America/Los_Angeles"
+    },
+    {
+      "id": "1002-rid-1790010000",
+      "series_id": 1002,
+      "title": "Daily Noon Check-in",
+      "notes": "https://zoom.us/j/777888999",
+      "start_dt": "2026-09-21T12:00:00-04:00",
+      "end_dt": "2026-09-21T13:00:00-04:00",
+      "all_day": false,
+      "rrule": "FREQ=DAILY",
+      "tz": "America/New_York"
+    },
+    {
+      "id": "1002-rid-1790096400",
+      "series_id": 1002,
+      "title": "Daily Noon Check-in",
+      "notes": "https://zoom.us/j/777888999",
+      "start_dt": "2026-09-22T12:00:00-04:00",
+      "end_dt": "2026-09-22T13:00:00-04:00",
+      "all_day": false,
+      "rrule": "FREQ=DAILY",
+      "tz": "America/New_York"
+    },
+    {
+      "id": "1002-rid-1790030000",
+      "series_id": 1002,
+      "title": "Daily Noon Check-in",
+      "notes": "https://zoom.us/j/777888999",
+      "start_dt": "2026-09-21T18:00:00-04:00",
+      "end_dt": "2026-09-21T19:00:00-04:00",
+      "all_day": false,
+      "rrule": "FREQ=DAILY",
+      "tz": "America/New_York"
+    },
+    {
+      "id": "1003",
+      "series_id": null,
+      "title": "Business Meeting (monthly)",
+      "notes": "https://zoom.us/j/111",
+      "start_dt": "2026-09-25T18:00:00-04:00",
+      "all_day": false,
+      "rrule": "FREQ=MONTHLY;BYDAY=4FR",
+      "tz": "America/New_York"
+    },
+    {
+      "id": "1004",
+      "series_id": null,
+      "title": "No link here",
+      "notes": "Ask a member for the link.",
+      "start_dt": "2026-09-23T20:00:00+10:00",
+      "all_day": false,
+      "rrule": "FREQ=WEEKLY;BYDAY=WE",
+      "tz": "Australia/Sydney"
+    }
   ],
   "timestamp": 1790000000
 }

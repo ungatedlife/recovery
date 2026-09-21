@@ -47,7 +47,17 @@ describe('teamup normalize', () => {
     const { meetings, review } = normalizeTeamup(events, null, 'https://example.org/cal');
     expect(meetings.map((m) => m.sourceKey).sort()).toEqual(['teamup:1001:0', 'teamup:1002:1', 'teamup:1002:2']);
     expect(meetings[0]).toMatchObject({ name: 'Sunday Serenity', day: 0, time: '09:30', endTime: '10:30', timezone: 'America/Los_Angeles', conferenceUrl: 'https://us02web.zoom.us/j/222333444?pwd=QwErTy99', conferenceUrlNotes: 'passcode serenity' });
-    expect(review.map((r) => r.reason)).toEqual(['non-weekly recurrence FREQ=MONTHLY;BYDAY=4FR', 'no join link in notes']);
+    expect(review.map((r) => r.reason)).toEqual([
+      'two starts for one series on the same weekday (12:00 and 18:00)',
+      'non-weekly recurrence FREQ=MONTHLY;BYDAY=4FR',
+      'no join link in notes',
+    ]);
+  });
+  it('keeps the first start and never silently drops the second', () => {
+    const { meetings } = normalizeTeamup(events, null, null);
+    const monday = meetings.filter((m) => m.sourceKey === 'teamup:1002:1');
+    expect(monday).toHaveLength(1);
+    expect(monday[0].time).toBe('12:00');
   });
 });
 
