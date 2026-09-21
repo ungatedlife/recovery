@@ -18,7 +18,7 @@
     "db:seed:remote": "wrangler d1 execute DB --remote --file db/seed/legacy.sql",
     "deploy": "astro build && wrangler deploy",
     "types": "wrangler types",
-    "prepare": "wrangler types"
+    "prepare": "wrangler types || true"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.3.2",
